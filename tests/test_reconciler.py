@@ -107,6 +107,50 @@ def test_refuses_to_overwrite_unmanaged_stream_in_configured_slot() -> None:
         Reconciler(config, daemon).plan()
 
 
+def test_disabled_receiver_deletes_owned_sink() -> None:
+    config = BridgeConfig(
+        receivers=(ReceiverConfig("ret", 2, "Return", (0, 1), sdp=_sdp(), enabled=False),),
+    )
+    existing = DaemonStream(
+        "receiver",
+        2,
+        {"id": 2, "name": managed_name("default", "receiver", "ret", "Return")},
+    )
+    daemon = FakeDaemon(DaemonState(receivers=(existing,)))
+
+    report = Reconciler(config, daemon).reconcile()
+
+    assert [(op.action, op.side, op.daemon_id) for op in report.operations] == [
+        ("delete", "receiver", 2)
+    ]
+    assert daemon.calls == [("delete_receiver", 2, None)]
+
+
+def test_disabled_receiver_does_not_create_sink() -> None:
+    config = BridgeConfig(
+        receivers=(ReceiverConfig("ret", 2, "Return", (0, 1), sdp=_sdp(), enabled=False),),
+    )
+    daemon = FakeDaemon(DaemonState())
+
+    report = Reconciler(config, daemon).reconcile()
+
+    assert report.operations == ()
+    assert daemon.calls == []
+
+
+def test_disabled_receiver_leaves_unmanaged_slot_untouched() -> None:
+    config = BridgeConfig(
+        receivers=(ReceiverConfig("ret", 2, "Return", (0, 1), sdp=_sdp(), enabled=False),),
+    )
+    unmanaged = DaemonStream("receiver", 2, {"id": 2, "name": "Manual sink"})
+    daemon = FakeDaemon(DaemonState(receivers=(unmanaged,)))
+
+    report = Reconciler(config, daemon).reconcile()
+
+    assert report.operations == ()
+    assert daemon.calls == []
+
+
 def test_dry_run_does_not_call_daemon_mutations() -> None:
     config = BridgeConfig(senders=(SenderConfig("main", 1, "Main", (0, 1)),))
     daemon = FakeDaemon(DaemonState())
