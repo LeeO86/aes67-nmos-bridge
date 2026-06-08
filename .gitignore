@@ -1,8 +1,13 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-.venv/
-dist/
-build/
+# Build output
+/build/
+/CMakeUserPresets.json
+
+# Conan
+conan.lock
+graph_info.json
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
