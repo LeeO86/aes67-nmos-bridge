@@ -8,11 +8,17 @@ from collections.abc import Sequence
 from .config import load_config
 from .daemon_client import DaemonClient
 from .service import BridgeService
+from .store import DesiredStateStore
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aes67-nmos-bridge")
     parser.add_argument("--config", required=True, help="Path to bridge JSON configuration")
+    parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Do not write IS-05 activations back to the config file (in-memory only)",
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     reconcile = subcommands.add_parser("reconcile", help="Run one reconciliation pass")
@@ -22,7 +28,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     config = load_config(args.config)
-    service = BridgeService(config, DaemonClient(config.daemon_base_url))
+    state_path = None if args.no_persist else args.config
+    store = DesiredStateStore(config, path=state_path)
+    service = BridgeService(store, DaemonClient(config.daemon_base_url))
 
     if args.command == "reconcile":
         report = service.reconcile_once(dry_run=args.dry_run)
