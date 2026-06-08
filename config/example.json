@@ -1,0 +1,45 @@
+{
+  "logging_level": 0,
+  "http_port": 3210,
+  "label": "AES67 NMOS Bridge",
+  "description": "NMOS control bridge for bondagit/aes67-linux-daemon",
+
+  "daemon_base_url": "http://127.0.0.1:8080",
+  "namespace": "default",
+  "reconcile_interval_seconds": 5,
+
+  "senders": [
+    {
+      "nmos_id": "program-main",
+      "daemon_id": 0,
+      "label": "Program Main",
+      "description": "Main programme bus",
+      "io": "Audio Device",
+      "codec": "L24",
+      "address": "239.2.0.1",
+      "rtp_port": 5004,
+      "sample_rate": 48000,
+      "max_samples_per_packet": 48,
+      "ttl": 15,
+      "payload_type": 98,
+      "dscp": 34,
+      "refclk_ptp_traceable": true,
+      "map": [0, 1]
+    }
+  ],
+
+  "receivers": [
+    {
+      "nmos_id": "return-feed",
+      "daemon_id": 0,
+      "label": "Return Feed",
+      "description": "Return from remote AES67 source",
+      "io": "Audio Device",
+      "delay": 576,
+      "source": "",
+      "sample_rate": 48000,
+      "ignore_refclk_gmid": false,
+      "map": [0, 1]
+    }
+  ]
+}
