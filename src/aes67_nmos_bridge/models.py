@@ -16,11 +16,14 @@ class SenderConfig:
     io: str = "Audio Device"
     codec: str = "L24"
     address: str = ""
+    rtp_port: int = 5004
+    sample_rate: int = 48000
     max_samples_per_packet: int = 48
     ttl: int = 15
     payload_type: int = 98
     dscp: int = 34
     refclk_ptp_traceable: bool = True
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -30,10 +33,13 @@ class ReceiverConfig:
     label: str
     map: tuple[int, ...]
     sdp: str
+    enabled: bool = True
     io: str = "Audio Device"
     delay: int = 576
     source: str = ""
+    sample_rate: int = 48000
     ignore_refclk_gmid: bool = False
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -43,6 +49,8 @@ class BridgeConfig:
     reconcile_interval_seconds: float = 5.0
     http_host: str = "127.0.0.1"
     http_port: int = 8090
+    advertised_host: str = ""
+    node_label: str = ""
     senders: tuple[SenderConfig, ...] = field(default_factory=tuple)
     receivers: tuple[ReceiverConfig, ...] = field(default_factory=tuple)
 
