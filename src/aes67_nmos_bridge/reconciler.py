@@ -73,6 +73,29 @@ class Reconciler:
 
         for daemon_id, desired_stream in desired.items():
             existing_stream = existing.get(daemon_id)
+
+            # Receivers have no native "enabled" flag on the daemon sink, so a
+            # disabled (master_enable=false) receiver must not own a sink. If we
+            # currently own the slot, remove it; an unmanaged stream is left be.
+            if side == "receiver" and not getattr(desired_stream, "enabled", True):
+                if existing_stream is not None:
+                    ownership = parse_managed_name(existing_stream.name)
+                    if (
+                        ownership is not None
+                        and ownership.namespace == self.config.namespace
+                        and ownership.side == side
+                        and ownership.nmos_id == desired_stream.nmos_id
+                    ):
+                        operations.append(
+                            PlannedOperation(
+                                "delete",
+                                side,
+                                daemon_id,
+                                "receiver disabled (master_enable=false)",
+                            )
+                        )
+                continue
+
             desired_payload = self._payload_for(side, desired_stream)
             if existing_stream is None:
                 operations.append(
