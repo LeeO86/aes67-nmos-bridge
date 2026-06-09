@@ -1,9 +1,15 @@
 # Cursor Cloud Agent base image for aes67-nmos-bridge (C++/CMake + Conan 2 + nmos-cpp).
-# Workspace is mounted at runtime; only dependency metadata is copied here to warm caches.
+#
+# Keep this image build fast and reliable: system deps + Conan + profile only.
+# Heavy `conan install --build=missing` runs in environment.json `install` (after
+# the workspace is mounted) so a failed/slow dependency build cannot brick image creation.
 
 FROM ubuntu:24.04
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    CC=gcc-13 \
+    CXX=g++-13 \
+    PATH=/usr/local/bin:/usr/bin:/bin
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-13 \
@@ -17,16 +23,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     git \
     ca-certificates \
+    bash \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --break-system-packages "conan~=2.20"
+# Conan CLI for all users (system-wide install on Ubuntu 24.04).
+RUN pip3 install --break-system-packages "conan~=2.20" \
+    && conan --version
 
 COPY .cursor/setup-conan-profile.sh /usr/local/bin/setup-conan-profile.sh
-RUN chmod +x /usr/local/bin/setup-conan-profile.sh && setup-conan-profile.sh
-
-# Pre-warm the Conan package cache using the repo's conanfile (build context = repo root).
-WORKDIR /opt/conan-prewarm
-COPY conanfile.txt /opt/conan-prewarm/conanfile.txt
-RUN conan install . --build=missing -s build_type=Release
+RUN chmod +x /usr/local/bin/setup-conan-profile.sh \
+    && setup-conan-profile.sh
 
 WORKDIR /workspace

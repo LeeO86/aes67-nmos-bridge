@@ -4,12 +4,5 @@
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "install": "bash .cursor/setup-conan-profile.sh && conan install . --build=missing -s build_type=Release && cmake -S . -B build/Release -G Ninja -DCMAKE_TOOLCHAIN_FILE=\"$PWD/build/Release/generators/conan_toolchain.cmake\" -DCMAKE_BUILD_TYPE=Release && cmake --build build/Release",
-  "start": "sudo avahi-daemon -D 2>/dev/null || true",
-  "ports": [
-    {
-      "name": "nmos-node",
-      "port": 3210
-    }
-  ]
+  "install": "bash .cursor/install.sh"
 }

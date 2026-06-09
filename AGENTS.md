@@ -6,10 +6,9 @@
 
 Cloud agents use **`.cursor/environment.json`**, which:
 
-1. Builds **`.cursor/Dockerfile`** with `g++-13`, `cmake`, `ninja`, Avahi DNS-SD headers, `avahi-daemon`, and `conan~=2.20`.
+1. Builds **`.cursor/Dockerfile`** with `g++-13`, `cmake`, `ninja`, Avahi DNS-SD headers, `avahi-daemon`, and `conan~=2.20` (fast image; no heavy Conan builds at image time).
 2. Writes the **gcc-13 Conan profile** (`tools.build:compiler_executables`) via `.cursor/setup-conan-profile.sh`.
-3. **Pre-warms** the Conan cache during image build (`conan install` on `conanfile.txt`).
-4. On each session **`install`** re-runs Conan + CMake configure + build from the mounted workspace.
+3. On each session **`install`** (`.cursor/install.sh`) exports `CC`/`CXX`, runs Conan + CMake with `-DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13`, and builds.
 
 No manual apt/Conan setup is required when this environment is active.
 
@@ -20,11 +19,21 @@ No manual apt/Conan setup is required when this environment is active.
 ### Build (manual / if install was skipped)
 
 ```bash
+bash .cursor/install.sh
+ctest --test-dir build/Release --output-on-failure
+```
+
+Or step-by-step (same as `install.sh`):
+
+```bash
+export CC=gcc-13 CXX=g++-13
 bash .cursor/setup-conan-profile.sh
 conan install . --build=missing -s build_type=Release
 cmake -S . -B build/Release -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
-  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=gcc-13 \
+  -DCMAKE_CXX_COMPILER=g++-13
 cmake --build build/Release
 ctest --test-dir build/Release --output-on-failure
 ```
@@ -35,7 +44,7 @@ ctest --test-dir build/Release --output-on-failure
 |---|---|---|---|
 | `aes67-linux-daemon` | Yes for live daemon sync | `http://127.0.0.1:8080` | External; not in this repo |
 | `aes67-nmos-bridge` | Yes for E2E | `http://127.0.0.1:3210` | NMOS IS-04/IS-05 (`http_port` in config) |
-| `avahi-daemon` | Optional | — | Started via `environment.json` `start`; DNS-SD warnings OK without a registry |
+| `avahi-daemon` | Optional | — | DNS-SD warnings OK without a registry; start manually if needed |
 
 ```bash
 ./build/Release/aes67-nmos-bridge config/example.json
