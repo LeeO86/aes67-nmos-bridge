@@ -12,28 +12,68 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
+  build:
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Install build tools and DNS-SD headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 cmake ninja-build \
+            libavahi-compat-libdnssd-dev
+
+      - name: Set up Python (for Conan)
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: python -m pip install -e ".[dev]"
+      - name: Install Conan
+        run: pip install "conan~=2.20"
 
-      - name: Lint
-        run: ruff check .
+      - name: Configure Conan profile (gcc 13)
+        run: |
+          mkdir -p ~/.conan2/profiles
+          cat > ~/.conan2/profiles/default <<'EOF'
+          [settings]
+          arch=x86_64
+          build_type=Release
+          compiler=gcc
+          compiler.cppstd=17
+          compiler.libcxx=libstdc++11
+          compiler.version=13
+          os=Linux
+
+          [conf]
+          tools.build:compiler_executables={"c": "gcc-13", "cpp": "g++-13"}
+
+          [buildenv]
+          CC=gcc-13
+          CXX=g++-13
+          EOF
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.txt') }}
+          restore-keys: |
+            conan-${{ runner.os }}-
+
+      - name: Conan install (build missing)
+        run: conan install . --build=missing -s build_type=Release
+
+      - name: CMake configure
+        run: |
+          cmake -S . -B build/Release -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/Release
 
       - name: Test
-        run: pytest
+        run: ctest --test-dir build/Release --output-on-failure
