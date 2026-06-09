@@ -6,6 +6,10 @@
 conan.lock
 graph_info.json
 
+# Python test harness cache
+__pycache__/
+*.pyc
+
 # Editor / OS
 .vscode/
 .idea/
