@@ -6,7 +6,7 @@
 
 Cloud agents use **`.cursor/environment.json`**, which:
 
-1. Builds **`.cursor/Dockerfile`** with `g++-13`, `cmake`, `ninja`, Avahi DNS-SD headers, `avahi-daemon`, and `conan~=2.20` (fast image; no heavy Conan builds at image time).
+1. Builds **`.cursor/Dockerfile`** with `gcc-13`/`g++-13`, `make`, `cmake`, `ninja`, Avahi DNS-SD headers, `avahi-daemon`, and `conan~=2.20` (fast image; no heavy Conan builds at image time).
 2. Writes the **gcc-13 Conan profile** (`tools.build:compiler_executables`) via `.cursor/setup-conan-profile.sh`.
 3. On each session **`install`** (`.cursor/install.sh`) exports `CC`/`CXX`, runs Conan + CMake with `-DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13`, and builds.
 

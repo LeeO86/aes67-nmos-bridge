@@ -14,6 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-13 \
     g++-13 \
+    make \
     cmake \
     ninja-build \
     libavahi-compat-libdnssd-dev \
