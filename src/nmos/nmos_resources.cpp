@@ -177,6 +177,26 @@ void insert_node_resources(nmos::node_model& model, const BridgeConfig& config,
                 value_of({{nmos::fields::constraint_enum,
                            value_of({value::string(addresses.front())})}});
         }
+        if (!cfg.address.empty()) {
+            connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_ip] =
+                value_of({{nmos::fields::constraint_enum,
+                           value_of({value::string(utility::conversions::to_string_t(cfg.address))})}});
+        }
+        connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::source_port] =
+            value_of({{nmos::fields::constraint_enum, value_of({value::number(cfg.rtp_port)})}});
+        connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_port] =
+            value_of({{nmos::fields::constraint_enum, value_of({value::number(cfg.rtp_port)})}});
+        auto& active_sender_tp =
+            nmos::fields::transport_params(nmos::fields::endpoint_active(connection_sender.data))[0];
+        if (!addresses.empty()) {
+            active_sender_tp[nmos::fields::source_ip] = value::string(addresses.front());
+        }
+        if (!cfg.address.empty()) {
+            active_sender_tp[nmos::fields::destination_ip] =
+                value::string(utility::conversions::to_string_t(cfg.address));
+        }
+        active_sender_tp[nmos::fields::source_port] = value::number(cfg.rtp_port);
+        active_sender_tp[nmos::fields::destination_port] = value::number(cfg.rtp_port);
         nmos::insert_resource(model.node_resources, std::move(sender));
         nmos::insert_resource(model.connection_resources, std::move(connection_sender));
     }

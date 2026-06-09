@@ -55,11 +55,13 @@ The AES67 daemon exposes no custom per-stream metadata, so the bridge encodes
 ownership in the daemon stream **name**:
 
 ```text
-NMOS[<namespace>]/sender/<nmos_id> <label>
-NMOS[<namespace>]/receiver/<nmos_id> <label>
+NMOS(<namespace>)/sender/<nmos_id> <label>
+NMOS(<namespace>)/receiver/<nmos_id> <label>
 ```
 
 Only streams matching the configured `namespace` are considered bridge-owned.
+The parser also recognizes older square-bracket markers, including names already
+sanitized by the daemon, so existing bridge-owned streams can be reconciled.
 
 - Bridge-owned streams that are no longer wanted are deleted.
 - A receiver with `master_enable = false` has its daemon sink removed.
@@ -83,6 +85,14 @@ Implemented:
   activation.
 - Unit tests (Catch2) for ownership, config and reconciler; CI building against
   `nmos-cpp` from Conan.
+- Layered CI test gates:
+  - Fast hermetic unit tests for config, ownership and reconcile planning.
+  - Real-daemon integration against `bondagit/aes67-linux-daemon` built with its
+    upstream `FAKE_DRIVER=ON` test mechanism, covering IS-05 activation,
+    daemon `/api/streams`, receiver disable cleanup and fail-closed unmanaged
+    stream conflicts.
+  - AMWA `nmos-testing` conformance suites for IS-04-01, IS-04-03, IS-05-01 and
+    IS-05-02.
 
 Not implemented (by design / future work):
 
@@ -90,8 +100,6 @@ Not implemented (by design / future work):
 - Reading the authoritative sender SDP from the daemon
   (`GET /api/source/sdp/:id`); the bridge currently generates the sender SDP
   from the IS-04 resources via `nmos-cpp`.
-- An end-to-end CI job against a fake AES67 daemon and the AMWA `nmos-testing`
-  suites (IS-04-01/03, IS-05-01/02).
 
 ## Building
 
@@ -113,6 +121,30 @@ ctest --test-dir build/Release --output-on-failure
 
 > Note: on systems where `/usr/bin/c++` points to clang, force gcc in the Conan
 > profile (`tools.build:compiler_executables`) — see `.github/workflows/ci.yml`.
+
+## Test layers
+
+The CI workflow intentionally keeps three separate layers:
+
+1. `unit` runs the Catch2 tests. These remain the fast, blocking hermetic gate for
+   ownership parsing, config validation and reconcile decisions. In-process fakes
+   are limited to this pure logic layer.
+2. `real-daemon-integration` checks out `bondagit/aes67-linux-daemon`, builds it
+   with the upstream `buildfake.sh` path (`FAKE_DRIVER=ON`, real HTTP/session/SDP
+   daemon code), starts it on loopback, starts the bridge, performs IS-05
+   immediate sender/receiver activations, and verifies the real daemon state.
+   The daemon exposes multicast address and channel map via `/api/streams`; its
+   source RTP port is verified through `GET /api/source/sdp/:id`, because
+   `/api/streams` does not include a per-source port field.
+3. `nmos-conformance` starts the same real daemon plus the bridge and runs
+   AMWA-TV `nmos-testing` for IS-04-01, IS-04-03, IS-05-01 and IS-05-02. Failures
+   fail CI, with JUnit XML written under `build/nmos-testing`. The runner disables
+   DNS-SD-dependent checks because the Linux Avahi Bonjour compatibility layer
+   used by the Conan `nmos-cpp` build reports `DNSServiceCreateConnection` as
+   unsupported in this CI environment; direct IS-04/IS-05 API checks still fail
+   the job. IS-05-02 sender destination-variation tests are also ignored because
+   each bridge sender is intentionally constrained to the configured daemon
+   multicast address.
 
 ## Running
 

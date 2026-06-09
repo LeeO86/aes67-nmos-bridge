@@ -84,30 +84,40 @@ value make_sink_payload(const ReceiverConfig& cfg, const std::string& ns, const 
 }
 
 nmos::connection_resource_auto_resolver make_auto_resolver(const ResourceRegistry& registry) {
-    std::map<nmos::id, std::string> sender_multicast;  // sender_id -> configured destination
+    struct SenderDestination {
+        std::string address;
+        int port = 0;
+    };
+    std::map<nmos::id, SenderDestination> sender_destinations;
     std::vector<nmos::id> receiver_ids;
-    for (const auto& kv : registry.senders) sender_multicast[kv.first] = kv.second.address;
+    for (const auto& kv : registry.senders) {
+        sender_destinations[kv.first] = {kv.second.address, kv.second.rtp_port};
+    }
     for (const auto& kv : registry.receivers) receiver_ids.push_back(kv.first);
 
-    return [sender_multicast, receiver_ids](const nmos::resource& /*resource*/,
-                                            const nmos::resource& connection_resource,
-                                            value& transport_params) {
+    return [sender_destinations, receiver_ids](const nmos::resource& /*resource*/,
+                                               const nmos::resource& connection_resource,
+                                               value& transport_params) {
         const auto& id = connection_resource.id;
         const auto& type = connection_resource.type;
         const auto& constraints = nmos::fields::endpoint_constraints(connection_resource.data);
 
-        const auto sender = sender_multicast.find(id);
-        if (sender != sender_multicast.end()) {
+        const auto sender = sender_destinations.find(id);
+        if (sender != sender_destinations.end()) {
             nmos::details::resolve_auto(transport_params[0], nmos::fields::source_ip, [&] {
                 return web::json::front(
                     nmos::fields::constraint_enum(constraints.at(0).at(nmos::fields::source_ip)));
             });
             // The daemon transmits to the configured multicast group; resolve the
-            // sender destination so the generated SDP carries a real address.
-            if (!sender->second.empty()) {
+            // sender destination so the generated SDP carries real RTP details.
+            if (!sender->second.address.empty()) {
                 nmos::details::resolve_auto(transport_params[0], nmos::fields::destination_ip,
-                                            [&] { return value::string(us(sender->second)); });
+                                            [&] { return value::string(us(sender->second.address)); });
             }
+            nmos::details::resolve_auto(transport_params[0], nmos::fields::source_port,
+                                        [&] { return value::number(sender->second.port); });
+            nmos::details::resolve_auto(transport_params[0], nmos::fields::destination_port,
+                                        [&] { return value::number(sender->second.port); });
         } else if (boost::range::find(receiver_ids, id) != receiver_ids.end()) {
             nmos::details::resolve_auto(transport_params[0], nmos::fields::interface_ip, [&] {
                 return web::json::front(
