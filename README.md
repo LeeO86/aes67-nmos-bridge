@@ -146,6 +146,21 @@ The CI workflow intentionally keeps three separate layers:
    each bridge sender is intentionally constrained to the configured daemon
    multicast address.
 
+The generated AMWA XML may also contain AMWA-reported skips that are not bridge
+failures: IS-10 authorization checks are out of scope, optional BCP tag/capability
+checks are skipped when the configured resources do not advertise those optional
+features, peer-to-peer runs have no Query API registry, and sender manifest tests
+can be unclear while the sender remains inactive. The harness-managed exceptions
+are limited to the DNS-SD/registry checks and fixed sender-destination checks
+above.
+
+To run the real-daemon and conformance layers locally, install the additional
+packages used by CI for `bondagit/aes67-linux-daemon`: `build-essential`,
+`clang-18`, `libboost-all-dev`, `libasound2-dev`, `libavahi-client-dev`,
+`libfaac-dev`, `alsa-utils`, `dbus` and `python3-venv`. Upstream
+`buildfake.sh` expects `/usr/bin/clang` and `/usr/bin/clang++`; the Cursor Cloud
+image creates those symlinks to clang 18.
+
 ## Running
 
 ```bash

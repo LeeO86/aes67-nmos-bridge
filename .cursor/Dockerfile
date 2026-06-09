@@ -14,18 +14,29 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-13 \
     g++-13 \
+    build-essential \
+    clang-18 \
     make \
     cmake \
     ninja-build \
     libavahi-compat-libdnssd-dev \
+    libavahi-client-dev \
     avahi-daemon \
+    dbus \
+    libboost-all-dev \
+    libasound2-dev \
+    libfaac-dev \
+    alsa-utils \
     python3 \
     python3-pip \
+    python3-venv \
     sudo \
     git \
     ca-certificates \
     bash \
     curl \
+    && ln -sf /usr/bin/clang-18 /usr/bin/clang \
+    && ln -sf /usr/bin/clang++-18 /usr/bin/clang++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Conan CLI for all users (system-wide install on Ubuntu 24.04).
