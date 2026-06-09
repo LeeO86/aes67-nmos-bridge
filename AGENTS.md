@@ -2,26 +2,25 @@
 
 ## Cursor Cloud specific instructions
 
+### Environment (automated)
+
+Cloud agents use **`.cursor/environment.json`**, which:
+
+1. Builds **`.cursor/Dockerfile`** with `g++-13`, `cmake`, `ninja`, Avahi DNS-SD headers, `avahi-daemon`, and `conan~=2.20`.
+2. Writes the **gcc-13 Conan profile** (`tools.build:compiler_executables`) via `.cursor/setup-conan-profile.sh`.
+3. **Pre-warms** the Conan cache during image build (`conan install` on `conanfile.txt`).
+4. On each session **`install`** re-runs Conan + CMake configure + build from the mounted workspace.
+
+No manual apt/Conan setup is required when this environment is active.
+
 ### Product overview
 
 **AES67 NMOS Bridge** is a C++ NMOS Node (AMWA IS-04/IS-05) built on [`sony/nmos-cpp`](https://github.com/sony/nmos-cpp). It maps NMOS senders/receivers onto `bondagit/aes67-linux-daemon` streams via REST and reconciles them with ownership-safe create/update/delete logic.
 
-The Python prototype has been **removed**; this repo is C++ only.
-
-### System prerequisites
-
-Install once on the VM (not in the update script):
+### Build (manual / if install was skipped)
 
 ```bash
-sudo apt-get install -y g++-13 cmake ninja-build libavahi-compat-libdnssd-dev avahi-daemon
-pip install "conan~=2.20"
-```
-
-Configure the Conan profile for gcc-13 (see `.github/workflows/ci.yml` for the full profile with `tools.build:compiler_executables`).
-
-### Build
-
-```bash
+bash .cursor/setup-conan-profile.sh
 conan install . --build=missing -s build_type=Release
 cmake -S . -B build/Release -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
@@ -36,7 +35,7 @@ ctest --test-dir build/Release --output-on-failure
 |---|---|---|---|
 | `aes67-linux-daemon` | Yes for live daemon sync | `http://127.0.0.1:8080` | External; not in this repo |
 | `aes67-nmos-bridge` | Yes for E2E | `http://127.0.0.1:3210` | NMOS IS-04/IS-05 (`http_port` in config) |
-| `avahi-daemon` | Optional | — | DNS-SD/registration discovery; node still serves APIs without a registry |
+| `avahi-daemon` | Optional | — | Started via `environment.json` `start`; DNS-SD warnings OK without a registry |
 
 ```bash
 ./build/Release/aes67-nmos-bridge config/example.json
