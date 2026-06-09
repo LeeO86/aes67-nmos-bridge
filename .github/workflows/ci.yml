@@ -12,18 +12,18 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  unit:
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build tools and DNS-SD headers
+      - name: Install bridge build tools and DNS-SD headers
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gcc-13 g++-13 cmake ninja-build \
+            gcc-13 g++-13 cmake ninja-build make \
             libavahi-compat-libdnssd-dev
 
       - name: Set up Python (for Conan)
@@ -70,10 +70,198 @@ jobs:
         run: |
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13
 
       - name: Build
         run: cmake --build build/Release
 
-      - name: Test
+      - name: Unit tests
         run: ctest --test-dir build/Release --output-on-failure
+
+  real-daemon-integration:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout AES67 daemon
+        uses: actions/checkout@v4
+        with:
+          repository: bondagit/aes67-linux-daemon
+          path: external/aes67-linux-daemon
+          fetch-depth: 0
+
+      - name: Install bridge and daemon build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 cmake ninja-build \
+            libavahi-compat-libdnssd-dev \
+            build-essential clang-18 git make libboost-all-dev \
+            libasound2-dev libavahi-client-dev libfaac-dev alsa-utils
+          sudo ln -sf /usr/bin/clang-18 /usr/bin/clang
+          sudo ln -sf /usr/bin/clang++-18 /usr/bin/clang++
+
+      - name: Set up Python (for Conan)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Conan
+        run: pip install "conan~=2.20"
+
+      - name: Configure Conan profile (gcc 13)
+        run: |
+          mkdir -p ~/.conan2/profiles
+          cat > ~/.conan2/profiles/default <<'EOF'
+          [settings]
+          arch=x86_64
+          build_type=Release
+          compiler=gcc
+          compiler.cppstd=17
+          compiler.libcxx=libstdc++11
+          compiler.version=13
+          os=Linux
+
+          [conf]
+          tools.build:compiler_executables={"c": "gcc-13", "cpp": "g++-13"}
+
+          [buildenv]
+          CC=gcc-13
+          CXX=g++-13
+          EOF
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.txt') }}
+          restore-keys: |
+            conan-${{ runner.os }}-
+
+      - name: Build bridge
+        run: |
+          conan install . --build=missing -s build_type=Release
+          cmake -S . -B build/Release -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build build/Release
+
+      - name: Build real daemon with fake driver
+        working-directory: external/aes67-linux-daemon
+        run: |
+          ./buildfake.sh
+          test -x daemon/aes67-daemon
+
+      - name: Run bridge against real daemon REST contract
+        run: |
+          python3 tests/integration/real_daemon_integration.py \
+            --bridge "$PWD/build/Release/aes67-nmos-bridge" \
+            --daemon "$PWD/external/aes67-linux-daemon/daemon/aes67-daemon" \
+            --daemon-config "$PWD/tests/integration/daemon.conf"
+
+  nmos-conformance:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout AES67 daemon
+        uses: actions/checkout@v4
+        with:
+          repository: bondagit/aes67-linux-daemon
+          path: external/aes67-linux-daemon
+          fetch-depth: 0
+
+      - name: Checkout AMWA nmos-testing
+        uses: actions/checkout@v4
+        with:
+          repository: AMWA-TV/nmos-testing
+          path: external/nmos-testing
+          fetch-depth: 1
+
+      - name: Install bridge, daemon and conformance tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 cmake ninja-build \
+            libavahi-compat-libdnssd-dev avahi-daemon dbus \
+            build-essential clang-18 git make libboost-all-dev \
+            libasound2-dev libavahi-client-dev libfaac-dev alsa-utils
+          sudo ln -sf /usr/bin/clang-18 /usr/bin/clang
+          sudo ln -sf /usr/bin/clang++-18 /usr/bin/clang++
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python tools
+        run: |
+          pip install "conan~=2.20"
+          pip install -r external/nmos-testing/requirements.txt
+
+      - name: Configure Conan profile (gcc 13)
+        run: |
+          mkdir -p ~/.conan2/profiles
+          cat > ~/.conan2/profiles/default <<'EOF'
+          [settings]
+          arch=x86_64
+          build_type=Release
+          compiler=gcc
+          compiler.cppstd=17
+          compiler.libcxx=libstdc++11
+          compiler.version=13
+          os=Linux
+
+          [conf]
+          tools.build:compiler_executables={"c": "gcc-13", "cpp": "g++-13"}
+
+          [buildenv]
+          CC=gcc-13
+          CXX=g++-13
+          EOF
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.txt') }}
+          restore-keys: |
+            conan-${{ runner.os }}-
+
+      - name: Build bridge
+        run: |
+          conan install . --build=missing -s build_type=Release
+          cmake -S . -B build/Release -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build build/Release
+
+      - name: Build real daemon with fake driver
+        working-directory: external/aes67-linux-daemon
+        run: |
+          ./buildfake.sh
+          test -x daemon/aes67-daemon
+
+      - name: Start Avahi for DNS-SD conformance tests
+        run: |
+          sudo service dbus start || true
+          sudo service avahi-daemon start || sudo avahi-daemon --daemonize --no-drop-root
+
+      - name: Run AMWA nmos-testing
+        run: |
+          python3 tests/conformance/run_nmos_testing.py \
+            --bridge "$PWD/build/Release/aes67-nmos-bridge" \
+            --daemon "$PWD/external/aes67-linux-daemon/daemon/aes67-daemon" \
+            --daemon-config "$PWD/tests/integration/daemon.conf" \
+            --nmos-testing "$PWD/external/nmos-testing" \
+            --output-dir "$PWD/build/nmos-testing"

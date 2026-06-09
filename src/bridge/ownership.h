@@ -13,8 +13,8 @@ std::optional<Side> side_from_string(const std::string& value);
 // Ownership encoded in the AES67 daemon stream name, since the daemon exposes no
 // custom per-stream metadata field:
 //
-//   NMOS[<namespace>]/sender/<nmos_id> <label>
-//   NMOS[<namespace>]/receiver/<nmos_id> <label>
+//   NMOS(<namespace>)/sender/<nmos_id> <label>
+//   NMOS(<namespace>)/receiver/<nmos_id> <label>
 struct Ownership {
     std::string ns;
     Side side;
