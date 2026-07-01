@@ -32,6 +32,11 @@ TEST_CASE("parse_bridge_config accepts interface and API CIDR filters") {
     const auto settings = parse(R"({
         "daemon_interface_name": "eno2",
         "nmos_api_address_cidrs": ["10.0.0.0/8", "192.168.10.0/24"],
+        "nmos_registration": {
+            "mode": "static",
+            "address": "172.24.94.8:80",
+            "version": "v1.2"
+        },
         "senders": [{"nmos_id": "main", "daemon_id": 2, "label": "Main", "map": [0, 1]}]
     })");
 
@@ -40,6 +45,9 @@ TEST_CASE("parse_bridge_config accepts interface and API CIDR filters") {
     REQUIRE(config.nmos_api_address_cidrs.size() == 2);
     CHECK(config.nmos_api_address_cidrs[0] == "10.0.0.0/8");
     CHECK(config.nmos_api_address_cidrs[1] == "192.168.10.0/24");
+    CHECK(config.nmos_registration.mode == "static");
+    CHECK(config.nmos_registration.address == "172.24.94.8:80");
+    CHECK(config.nmos_registration.version == "v1.2");
 }
 
 TEST_CASE("parse_bridge_config rejects duplicate daemon ids") {

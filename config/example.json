@@ -8,6 +8,9 @@
   "daemon_interface_name": "",
   "namespace": "default",
   "nmos_api_address_cidrs": [],
+  "nmos_registration": {
+    "mode": "registryless"
+  },
   "reconcile_interval_seconds": 5,
 
   "senders": [

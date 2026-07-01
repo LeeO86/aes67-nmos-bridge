@@ -22,6 +22,7 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -94,6 +95,38 @@ bool matches_cidr(const std::string& address, const Ipv4Cidr& cidr) {
     } catch (const std::runtime_error&) {
         return false;
     }
+}
+
+struct HostPort {
+    std::string host;
+    int port = 0;
+};
+
+HostPort parse_host_port(const std::string& value) {
+    const auto colon = value.rfind(':');
+    if (colon == std::string::npos) {
+        return {value, 0};
+    }
+    const auto host = value.substr(0, colon);
+    const auto port_text = value.substr(colon + 1);
+    if (host.empty() || port_text.empty()) {
+        throw std::runtime_error("invalid static NMOS registration address: " + value);
+    }
+    try {
+        std::size_t consumed = 0;
+        const auto port = std::stoi(port_text, &consumed);
+        if (consumed != port_text.size() || port <= 0 || port > 65535) {
+            throw std::invalid_argument("invalid port");
+        }
+        return {host, port};
+    } catch (const std::exception&) {
+        throw std::runtime_error("invalid static NMOS registration address: " + value);
+    }
+}
+
+void disable_registry_discovery(web::json::value& settings) {
+    settings[nmos::fields::highest_pri] =
+        web::json::value::number((std::numeric_limits<int>::max)());
 }
 
 nmos::channel_symbol channel_symbol_for(std::size_t index) {
@@ -221,6 +254,52 @@ void apply_api_address_filters(web::json::value& settings, const BridgeConfig& c
 
     settings[nmos::fields::host_addresses] = addresses;
     settings[nmos::fields::host_address] = addresses.at(0);
+}
+
+void apply_registration_settings(web::json::value& settings, const BridgeConfig& config) {
+    const auto& registration = config.nmos_registration;
+    if (registration.mode.empty()) return;
+
+    if (registration.mode == "static") {
+        if (registration.address.empty()) {
+            throw std::runtime_error("nmos_registration static mode requires address");
+        }
+        const auto endpoint = parse_host_port(registration.address);
+        settings[nmos::fields::registry_address] = web::json::value::string(
+            utility::conversions::to_string_t(endpoint.host));
+        const auto port = registration.port > 0 ? registration.port : endpoint.port;
+        if (port > 0) {
+            settings[nmos::fields::registration_port] = web::json::value::number(port);
+        }
+        if (!registration.version.empty()) {
+            settings[nmos::fields::registry_version] =
+                web::json::value::string(utility::conversions::to_string_t(registration.version));
+        }
+        disable_registry_discovery(settings);
+        return;
+    }
+
+    if (registration.mode == "dns-sd") {
+        settings[nmos::fields::dns_sd_browse_mode] = web::json::value::number(1);
+        if (!registration.domain.empty()) {
+            settings[nmos::fields::domain] =
+                web::json::value::string(utility::conversions::to_string_t(registration.domain));
+        }
+        return;
+    }
+
+    if (registration.mode == "mdns" || registration.mode == "bonjour") {
+        settings[nmos::fields::dns_sd_browse_mode] = web::json::value::number(2);
+        settings[nmos::fields::domain] = web::json::value::string(U("local."));
+        return;
+    }
+
+    if (registration.mode == "registryless" || registration.mode == "peer-to-peer") {
+        disable_registry_discovery(settings);
+        return;
+    }
+
+    throw std::runtime_error("unsupported nmos_registration mode: " + registration.mode);
 }
 
 nmos::id sender_resource_id(const nmos::id& seed_id, const std::string& nmos_id) {

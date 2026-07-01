@@ -33,6 +33,9 @@ void ensure_seed_id(web::json::value& settings, const std::string& ns);
 // Apply bridge-level NMOS API address filters before nmos-cpp inserts defaults.
 void apply_api_address_filters(web::json::value& settings, const BridgeConfig& config);
 
+// Apply bridge-level IS-04 registration/discovery settings to nmos-cpp settings.
+void apply_registration_settings(web::json::value& settings, const BridgeConfig& config);
+
 // Compute the (deterministic) resource ids for the configuration. Pure; does not
 // touch the model.
 ResourceRegistry build_registry(const web::json::value& settings, const BridgeConfig& config);
