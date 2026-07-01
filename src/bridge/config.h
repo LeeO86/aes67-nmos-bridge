@@ -42,6 +42,8 @@ struct BridgeConfig {
     std::string daemon_base_url = "http://127.0.0.1:8080";
     std::string ns = "default";
     double reconcile_interval_seconds = 5.0;
+    std::string daemon_interface_name;
+    std::vector<std::string> nmos_api_address_cidrs;
     std::vector<SenderConfig> senders;
     std::vector<ReceiverConfig> receivers;
 };

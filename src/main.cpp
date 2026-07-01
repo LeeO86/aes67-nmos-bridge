@@ -46,6 +46,7 @@ int main(int argc, char* argv[]) {
 
         // Deterministic, stable resource ids derived from the namespace.
         bridge::ensure_seed_id(node_model.settings, config.ns);
+        bridge::apply_api_address_filters(node_model.settings, config);
 
         nmos::insert_node_default_settings(node_model.settings);
         log_model.settings = node_model.settings;

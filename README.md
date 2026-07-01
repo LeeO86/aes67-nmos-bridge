@@ -174,7 +174,9 @@ bridge-specific keys:
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `daemon_base_url` | `http://127.0.0.1:8080` | AES67 daemon REST base URL |
+| `daemon_interface_name` | first NMOS host interface | Local interface used for RTP `interface_bindings` and source/interface IP constraints; set this to the AES67 daemon `interface_name` (for example `eno2`) when NMOS control and AES67 media are on different networks |
 | `namespace` | `default` | Ownership namespace + UUID seed |
+| `nmos_api_address_cidrs` | unset | Optional IPv4 CIDR allow-list used to derive `nmos-cpp` `host_addresses`, limiting advertised Node API endpoints (for example `["10.0.0.0/8"]`) |
 | `reconcile_interval_seconds` | `5` | Periodic reconcile period |
 | `senders` / `receivers` | `[]` | Stream definitions (see `config/example.json`) |
 
@@ -184,6 +186,16 @@ configured from the SDP transport file supplied at IS-05 activation.
 
 For stable resource IDs across restarts the bridge derives a `seed_id` from the
 namespace automatically; set `seed_id` explicitly in the config to override.
+
+Example for a host whose NMOS control API should be advertised only on 10/8
+addresses while the AES67 daemon streams on `eno2`:
+
+```json
+{
+  "nmos_api_address_cidrs": ["10.0.0.0/8"],
+  "daemon_interface_name": "eno2"
+}
+```
 
 ## Project history
 
