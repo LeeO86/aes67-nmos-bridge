@@ -19,11 +19,35 @@ TEST_CASE("parse_bridge_config applies defaults") {
     const auto config = parse_bridge_config(settings);
     CHECK(config.ns == "default");
     CHECK(config.daemon_base_url == "http://127.0.0.1:8080");
+    CHECK(config.daemon_interface_name.empty());
+    CHECK(config.nmos_api_address_cidrs.empty());
     REQUIRE(config.senders.size() == 1);
     CHECK(config.senders[0].codec == "L24");
     CHECK(config.senders[0].rtp_port == 5004);
     REQUIRE(config.receivers.size() == 1);
     CHECK(config.receivers[0].delay == 576);
+}
+
+TEST_CASE("parse_bridge_config accepts interface and API CIDR filters") {
+    const auto settings = parse(R"({
+        "daemon_interface_name": "eno2",
+        "nmos_api_address_cidrs": ["10.0.0.0/8", "192.168.10.0/24"],
+        "nmos_registration": {
+            "mode": "static",
+            "address": "172.24.94.8:80",
+            "version": "v1.2"
+        },
+        "senders": [{"nmos_id": "main", "daemon_id": 2, "label": "Main", "map": [0, 1]}]
+    })");
+
+    const auto config = parse_bridge_config(settings);
+    CHECK(config.daemon_interface_name == "eno2");
+    REQUIRE(config.nmos_api_address_cidrs.size() == 2);
+    CHECK(config.nmos_api_address_cidrs[0] == "10.0.0.0/8");
+    CHECK(config.nmos_api_address_cidrs[1] == "192.168.10.0/24");
+    CHECK(config.nmos_registration.mode == "static");
+    CHECK(config.nmos_registration.address == "172.24.94.8:80");
+    CHECK(config.nmos_registration.version == "v1.2");
 }
 
 TEST_CASE("parse_bridge_config rejects duplicate daemon ids") {

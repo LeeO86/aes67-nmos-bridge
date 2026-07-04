@@ -48,10 +48,9 @@ IGNORED_TESTS = {
         "test_01",
     ],
     "IS-05-02": [
-        # These tests activate Senders with alternate example multicast
-        # destinations. The bridge intentionally constrains each configured
-        # AES67 daemon sender to its configured multicast address.
-        "test_09",
+        # AES67 daemon sources are multicast RTP sources. Multicast sender
+        # destination variation is tested, but unicast sender activation is not
+        # a supported bridge/daemon mode.
         "test_10",
         "test_11",
     ],

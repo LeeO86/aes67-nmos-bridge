@@ -135,7 +135,7 @@ def first_resource(port, resource):
     return resources[0]["id"]
 
 
-def activate_sender(port, sender_id):
+def activate_sender(port, sender_id, destination_ip="239.2.0.1"):
     request(
         "PATCH",
         f"http://127.0.0.1:{port}/x-nmos/connection/v1.0/single/senders/{sender_id}/staged/",
@@ -144,7 +144,7 @@ def activate_sender(port, sender_id):
             "transport_params": [
                 {
                     "source_ip": "auto",
-                    "destination_ip": "239.2.0.1",
+                    "destination_ip": destination_ip,
                     "destination_port": 5004,
                     "rtp_enabled": True,
                 }
@@ -193,12 +193,12 @@ def stream_by_id(streams, side, daemon_id):
     return None
 
 
-def assert_source_created():
+def assert_source_created(expected_address="239.2.0.1"):
     streams = request("GET", f"{DAEMON}/api/streams")
     source = stream_by_id(streams, "source", 0)
     assert source, "Expected daemon source id 0 to be created"
     assert source["name"] == "NMOS(e2e)/sender/program-main Program Main"
-    assert source["address"] == "239.2.0.1"
+    assert source["address"] == expected_address
     assert source["map"] == [0, 1]
     assert source["codec"] == "L24"
     sdp = request("GET", f"{DAEMON}/api/source/sdp/0")
@@ -269,6 +269,11 @@ def run(args):
                 receiver_id = first_resource(port, "receivers")
                 activate_sender(port, sender_id)
                 wait_for("daemon source after sender activation", assert_source_created)
+                activate_sender(port, sender_id, "239.2.0.55")
+                wait_for(
+                    "daemon source after sender destination update",
+                    lambda: assert_source_created("239.2.0.55"),
+                )
                 activate_receiver(port, receiver_id, True)
                 wait_for("daemon sink after receiver activation", lambda: assert_sink_state(True))
                 activate_receiver(port, receiver_id, False)

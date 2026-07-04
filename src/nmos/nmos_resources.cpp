@@ -18,7 +18,13 @@
 
 #include <cpprest/host_utils.h>
 
+#include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdint>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 
 #include "bridge/ownership.h"
@@ -29,6 +35,110 @@ namespace {
 
 // Fixed root namespace UUID for deriving a stable per-namespace seed.
 const utility::string_t kSeedRoot = U("6d1f9b6a-4b2e-5c8a-9f3d-0a1b2c3d4e5f");
+
+std::string u8(const utility::string_t& s) { return utility::conversions::to_utf8string(s); }
+
+std::uint32_t parse_ipv4_address(const std::string& address) {
+    std::array<int, 4> octets{};
+    char dot1 = 0;
+    char dot2 = 0;
+    char dot3 = 0;
+    std::istringstream input(address);
+    if (!(input >> octets[0] >> dot1 >> octets[1] >> dot2 >> octets[2] >> dot3 >>
+          octets[3]) ||
+        dot1 != '.' || dot2 != '.' || dot3 != '.' || !input.eof()) {
+        throw std::runtime_error("invalid IPv4 address: " + address);
+    }
+    std::uint32_t result = 0;
+    for (const auto octet : octets) {
+        if (octet < 0 || octet > 255) {
+            throw std::runtime_error("invalid IPv4 address: " + address);
+        }
+        result = (result << 8) | static_cast<std::uint32_t>(octet);
+    }
+    return result;
+}
+
+struct Ipv4Cidr {
+    std::uint32_t network = 0;
+    int prefix = 0;
+};
+
+Ipv4Cidr parse_ipv4_cidr(const std::string& cidr) {
+    const auto slash = cidr.find('/');
+    if (slash == std::string::npos) {
+        throw std::runtime_error("invalid CIDR (missing prefix): " + cidr);
+    }
+    const auto address = cidr.substr(0, slash);
+    const auto prefix_text = cidr.substr(slash + 1);
+    int prefix = -1;
+    try {
+        std::size_t consumed = 0;
+        prefix = std::stoi(prefix_text, &consumed);
+        if (consumed != prefix_text.size()) {
+            throw std::invalid_argument("trailing characters");
+        }
+    } catch (const std::exception&) {
+        throw std::runtime_error("invalid CIDR prefix: " + cidr);
+    }
+    if (prefix < 0 || prefix > 32) {
+        throw std::runtime_error("CIDR prefix must be in range 0..32: " + cidr);
+    }
+    const auto mask = prefix == 0 ? 0u : (0xffffffffu << (32 - prefix));
+    return {parse_ipv4_address(address) & mask, prefix};
+}
+
+bool matches_cidr(const std::string& address, const Ipv4Cidr& cidr) {
+    const auto mask = cidr.prefix == 0 ? 0u : (0xffffffffu << (32 - cidr.prefix));
+    try {
+        return (parse_ipv4_address(address) & mask) == cidr.network;
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+}
+
+web::json::value ipv4_multicast_constraint() {
+    // IS-05 transport params are strings, so constrain them with a JSON-schema
+    // regex for 224.0.0.0/4 rather than enumerating one configured group.
+    return web::json::value_of({{nmos::fields::constraint_pattern,
+                                 web::json::value::string(
+                                     U("^(22[4-9]|23[0-9])\\."
+                                       "(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\\."
+                                       "(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\\."
+                                       "(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$"))}});
+}
+
+struct HostPort {
+    std::string host;
+    int port = 0;
+};
+
+HostPort parse_host_port(const std::string& value) {
+    const auto colon = value.rfind(':');
+    if (colon == std::string::npos) {
+        return {value, 0};
+    }
+    const auto host = value.substr(0, colon);
+    const auto port_text = value.substr(colon + 1);
+    if (host.empty() || port_text.empty()) {
+        throw std::runtime_error("invalid static NMOS registration address: " + value);
+    }
+    try {
+        std::size_t consumed = 0;
+        const auto port = std::stoi(port_text, &consumed);
+        if (consumed != port_text.size() || port <= 0 || port > 65535) {
+            throw std::invalid_argument("invalid port");
+        }
+        return {host, port};
+    } catch (const std::exception&) {
+        throw std::runtime_error("invalid static NMOS registration address: " + value);
+    }
+}
+
+void disable_registry_discovery(web::json::value& settings) {
+    settings[nmos::fields::highest_pri] =
+        web::json::value::number((std::numeric_limits<int>::max)());
+}
 
 nmos::channel_symbol channel_symbol_for(std::size_t index) {
     if (index == 0) return nmos::channel_symbols::L;
@@ -49,21 +159,61 @@ std::vector<nmos::channel> make_channels(std::size_t count) {
     return channels;
 }
 
-std::vector<utility::string_t> interface_names(const nmos::settings& settings) {
+std::vector<web::hosts::experimental::host_interface> all_host_interfaces() {
+    return web::hosts::experimental::host_interfaces();
+}
+
+web::hosts::experimental::host_interface find_interface_by_name(const std::string& name) {
+    for (const auto& iface : all_host_interfaces()) {
+        if (u8(iface.name) == name) return iface;
+    }
+    throw std::runtime_error("daemon_interface_name does not match a local interface: " + name);
+}
+
+bool contains_interface(const std::vector<web::hosts::experimental::host_interface>& interfaces,
+                        const utility::string_t& name) {
+    return std::any_of(interfaces.begin(), interfaces.end(), [&](const auto& iface) {
+        return iface.name == name;
+    });
+}
+
+web::hosts::experimental::host_interface rtp_host_interface(const nmos::settings& settings,
+                                                            const BridgeConfig& config) {
+    if (!config.daemon_interface_name.empty()) {
+        return find_interface_by_name(config.daemon_interface_name);
+    }
     const auto host_interfaces = nmos::get_host_interfaces(settings);
-    std::vector<utility::string_t> names;
     if (!host_interfaces.empty()) {
-        names.push_back(host_interfaces.front().name);
+        return host_interfaces.front();
+    }
+    return {};
+}
+
+std::vector<web::hosts::experimental::host_interface> node_host_interfaces(
+    const nmos::settings& settings, const BridgeConfig& config) {
+    auto interfaces = nmos::get_host_interfaces(settings);
+    if (!config.daemon_interface_name.empty()) {
+        const auto rtp_interface = find_interface_by_name(config.daemon_interface_name);
+        if (!contains_interface(interfaces, rtp_interface.name)) {
+            interfaces.push_back(rtp_interface);
+        }
+    }
+    return interfaces;
+}
+
+std::vector<utility::string_t> interface_names(const nmos::settings& settings,
+                                               const BridgeConfig& config) {
+    const auto iface = rtp_host_interface(settings, config);
+    std::vector<utility::string_t> names;
+    if (!iface.name.empty()) {
+        names.push_back(iface.name);
     }
     return names;
 }
 
-std::vector<utility::string_t> interface_addresses(const nmos::settings& settings) {
-    const auto host_interfaces = nmos::get_host_interfaces(settings);
-    if (!host_interfaces.empty()) {
-        return host_interfaces.front().addresses;
-    }
-    return {};
+std::vector<utility::string_t> interface_addresses(const nmos::settings& settings,
+                                                   const BridgeConfig& config) {
+    return rtp_host_interface(settings, config).addresses;
 }
 
 }  // namespace
@@ -85,6 +235,82 @@ void ensure_seed_id(web::json::value& settings, const std::string& ns) {
                                                        utility::conversions::to_string_t(ns));
         settings[key] = web::json::value::string(seed);
     }
+}
+
+void apply_api_address_filters(web::json::value& settings, const BridgeConfig& config) {
+    if (config.nmos_api_address_cidrs.empty()) return;
+
+    std::vector<Ipv4Cidr> cidrs;
+    for (const auto& cidr : config.nmos_api_address_cidrs) {
+        cidrs.push_back(parse_ipv4_cidr(cidr));
+    }
+
+    auto addresses = web::json::value::array();
+    std::size_t index = 0;
+    for (const auto& iface : all_host_interfaces()) {
+        for (const auto& address : iface.addresses) {
+            const auto address_u8 = u8(address);
+            const auto matched = std::any_of(cidrs.begin(), cidrs.end(), [&](const auto& cidr) {
+                return matches_cidr(address_u8, cidr);
+            });
+            if (matched) {
+                addresses[index++] = web::json::value::string(address);
+            }
+        }
+    }
+
+    if (index == 0) {
+        throw std::runtime_error("nmos_api_address_cidrs did not match any local IPv4 address");
+    }
+
+    settings[nmos::fields::host_addresses] = addresses;
+    settings[nmos::fields::host_address] = addresses.at(0);
+}
+
+void apply_registration_settings(web::json::value& settings, const BridgeConfig& config) {
+    const auto& registration = config.nmos_registration;
+    if (registration.mode.empty()) return;
+
+    if (registration.mode == "static") {
+        if (registration.address.empty()) {
+            throw std::runtime_error("nmos_registration static mode requires address");
+        }
+        const auto endpoint = parse_host_port(registration.address);
+        settings[nmos::fields::registry_address] = web::json::value::string(
+            utility::conversions::to_string_t(endpoint.host));
+        const auto port = registration.port > 0 ? registration.port : endpoint.port;
+        if (port > 0) {
+            settings[nmos::fields::registration_port] = web::json::value::number(port);
+        }
+        if (!registration.version.empty()) {
+            settings[nmos::fields::registry_version] =
+                web::json::value::string(utility::conversions::to_string_t(registration.version));
+        }
+        disable_registry_discovery(settings);
+        return;
+    }
+
+    if (registration.mode == "dns-sd") {
+        settings[nmos::fields::dns_sd_browse_mode] = web::json::value::number(1);
+        if (!registration.domain.empty()) {
+            settings[nmos::fields::domain] =
+                web::json::value::string(utility::conversions::to_string_t(registration.domain));
+        }
+        return;
+    }
+
+    if (registration.mode == "mdns" || registration.mode == "bonjour") {
+        settings[nmos::fields::dns_sd_browse_mode] = web::json::value::number(2);
+        settings[nmos::fields::domain] = web::json::value::string(U("local."));
+        return;
+    }
+
+    if (registration.mode == "registryless" || registration.mode == "peer-to-peer") {
+        disable_registry_discovery(settings);
+        return;
+    }
+
+    throw std::runtime_error("unsupported nmos_registration mode: " + registration.mode);
 }
 
 nmos::id sender_resource_id(const nmos::id& seed_id, const std::string& nmos_id) {
@@ -118,15 +344,15 @@ void insert_node_resources(nmos::node_model& model, const BridgeConfig& config,
 
     const auto& settings = model.settings;
     const auto seed_id = nmos::experimental::fields::seed_id(settings);
-    const auto names = interface_names(settings);
-    const auto addresses = interface_addresses(settings);
+    const auto names = interface_names(settings, config);
+    const auto addresses = interface_addresses(settings, config);
 
     auto lock = model.write_lock();
 
     // PTP clock (the host is expected to be PTP-synced).
     const auto clocks = value_of({nmos::make_ptp_clock(nmos::clock_names::clk0, true,
                                                        U("00-00-00-00-00-00-00-00"), true)});
-    const auto host_interfaces = nmos::get_host_interfaces(settings);
+    const auto host_interfaces = node_host_interfaces(settings, config);
     const auto interfaces = nmos::experimental::node_interfaces(host_interfaces);
 
     auto node = nmos::make_node(registry.node_id, clocks, nmos::make_node_interfaces(interfaces),
@@ -177,11 +403,8 @@ void insert_node_resources(nmos::node_model& model, const BridgeConfig& config,
                 value_of({{nmos::fields::constraint_enum,
                            value_of({value::string(addresses.front())})}});
         }
-        if (!cfg.address.empty()) {
-            connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_ip] =
-                value_of({{nmos::fields::constraint_enum,
-                           value_of({value::string(utility::conversions::to_string_t(cfg.address))})}});
-        }
+        connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_ip] =
+            ipv4_multicast_constraint();
         connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::source_port] =
             value_of({{nmos::fields::constraint_enum, value_of({value::number(cfg.rtp_port)})}});
         connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_port] =

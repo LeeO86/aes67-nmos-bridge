@@ -88,6 +88,16 @@ ReceiverConfig parse_receiver(const value& obj) {
     return receiver;
 }
 
+NmosRegistrationConfig parse_nmos_registration(const value& obj) {
+    NmosRegistrationConfig registration;
+    registration.mode = opt_string(obj, "mode", "");
+    registration.address = opt_string(obj, "address", "");
+    registration.port = opt_int(obj, "port", 0);
+    registration.version = opt_string(obj, "version", "");
+    registration.domain = opt_string(obj, "domain", "");
+    return registration;
+}
+
 template <typename T>
 void check_unique(const std::vector<T>& streams, const std::string& side) {
     std::set<int> daemon_ids;
@@ -117,10 +127,25 @@ BridgeConfig parse_bridge_config(const value& settings) {
         config.daemon_base_url.pop_back();
     }
     config.ns = opt_string(settings, "namespace", config.ns);
+    config.daemon_interface_name =
+        opt_string(settings, "daemon_interface_name", config.daemon_interface_name);
 
     const auto interval_key = utility::conversions::to_string_t("reconcile_interval_seconds");
     if (settings.has_field(interval_key) && !settings.at(interval_key).is_null()) {
         config.reconcile_interval_seconds = settings.at(interval_key).as_double();
+    }
+
+    const auto cidrs_key = utility::conversions::to_string_t("nmos_api_address_cidrs");
+    if (settings.has_field(cidrs_key) && !settings.at(cidrs_key).is_null()) {
+        for (const auto& element : settings.at(cidrs_key).as_array()) {
+            config.nmos_api_address_cidrs.push_back(
+                utility::conversions::to_utf8string(element.as_string()));
+        }
+    }
+
+    const auto registration_key = utility::conversions::to_string_t("nmos_registration");
+    if (settings.has_field(registration_key) && !settings.at(registration_key).is_null()) {
+        config.nmos_registration = parse_nmos_registration(settings.at(registration_key));
     }
 
     const auto senders_key = utility::conversions::to_string_t("senders");

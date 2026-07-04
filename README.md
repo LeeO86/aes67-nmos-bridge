@@ -80,7 +80,8 @@ Implemented:
 - Deterministic resource UUIDs derived from `namespace` + `nmos_id`
   (stable across restarts/hosts).
 - Audio (L16/L24) sender/receiver mapping, sender SDP generation, IS-05 `auto`
-  resolution to the configured multicast/interface.
+  resolution to the configured multicast/interface, and controller-selected
+  sender multicast destinations within IPv4 multicast range.
 - Ownership-safe reconciliation onto the daemon REST API, periodic + on
   activation.
 - Unit tests (Catch2) for ownership, config and reconciler; CI building against
@@ -142,9 +143,9 @@ The CI workflow intentionally keeps three separate layers:
    DNS-SD-dependent checks because the Linux Avahi Bonjour compatibility layer
    used by the Conan `nmos-cpp` build reports `DNSServiceCreateConnection` as
    unsupported in this CI environment; direct IS-04/IS-05 API checks still fail
-   the job. IS-05-02 sender destination-variation tests are also ignored because
-   each bridge sender is intentionally constrained to the configured daemon
-   multicast address.
+   the job. IS-05-02 multicast sender destination variation runs against the
+   real daemon path; unicast sender activation checks are ignored because AES67
+   daemon sources are multicast RTP sources.
 
 The generated AMWA XML may also contain AMWA-reported skips that are not bridge
 failures: IS-10 authorization checks are out of scope, optional BCP tag/capability
@@ -174,7 +175,10 @@ bridge-specific keys:
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `daemon_base_url` | `http://127.0.0.1:8080` | AES67 daemon REST base URL |
+| `daemon_interface_name` | first NMOS host interface | Local interface used for RTP `interface_bindings` and source/interface IP constraints; set this to the AES67 daemon `interface_name` (for example `eno2`) when NMOS control and AES67 media are on different networks |
 | `namespace` | `default` | Ownership namespace + UUID seed |
+| `nmos_api_address_cidrs` | unset | Optional IPv4 CIDR allow-list used to derive `nmos-cpp` `host_addresses`, limiting advertised Node API endpoints (for example `["10.0.0.0/8"]`) |
+| `nmos_registration` | unset (`nmos-cpp` default discovery) | Optional IS-04 registration/discovery mode: `static`, `dns-sd`, `mdns`/`bonjour`, or `registryless` |
 | `reconcile_interval_seconds` | `5` | Periodic reconcile period |
 | `senders` / `receivers` | `[]` | Stream definitions (see `config/example.json`) |
 
@@ -184,6 +188,53 @@ configured from the SDP transport file supplied at IS-05 activation.
 
 For stable resource IDs across restarts the bridge derives a `seed_id` from the
 namespace automatically; set `seed_id` explicitly in the config to override.
+
+Example for a host whose NMOS control API should be advertised only on 10/8
+addresses while the AES67 daemon streams on `eno2`:
+
+```json
+{
+  "nmos_api_address_cidrs": ["10.0.0.0/8"],
+  "daemon_interface_name": "eno2"
+}
+```
+
+Registration examples:
+
+```json
+{
+  "nmos_registration": {
+    "mode": "static",
+    "address": "172.24.94.8:80",
+    "version": "v1.2"
+  }
+}
+```
+
+```json
+{
+  "nmos_registration": {
+    "mode": "dns-sd",
+    "domain": "media.int"
+  }
+}
+```
+
+```json
+{
+  "nmos_registration": {
+    "mode": "mdns"
+  }
+}
+```
+
+```json
+{
+  "nmos_registration": {
+    "mode": "registryless"
+  }
+}
+```
 
 ## Project history
 

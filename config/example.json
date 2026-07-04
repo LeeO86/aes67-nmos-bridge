@@ -5,7 +5,12 @@
   "description": "NMOS control bridge for bondagit/aes67-linux-daemon",
 
   "daemon_base_url": "http://127.0.0.1:8080",
+  "daemon_interface_name": "",
   "namespace": "default",
+  "nmos_api_address_cidrs": [],
+  "nmos_registration": {
+    "mode": "registryless"
+  },
   "reconcile_interval_seconds": 5,
 
   "senders": [

@@ -44,6 +44,8 @@ if(AES67_NMOS_BRIDGE_BUILD_TESTS)
         tests/test_ownership.cpp
         tests/test_reconciler.cpp
         tests/test_config.cpp
+        tests/test_nmos_settings.cpp
+        src/nmos/nmos_resources.cpp
     )
     target_link_libraries(bridge_tests PRIVATE bridge_core Catch2::Catch2WithMain)
     include(CTest)
