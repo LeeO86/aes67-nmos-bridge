@@ -97,6 +97,17 @@ bool matches_cidr(const std::string& address, const Ipv4Cidr& cidr) {
     }
 }
 
+web::json::value ipv4_multicast_constraint() {
+    // IS-05 transport params are strings, so constrain them with a JSON-schema
+    // regex for 224.0.0.0/4 rather than enumerating one configured group.
+    return web::json::value_of({{nmos::fields::constraint_pattern,
+                                 web::json::value::string(
+                                     U("^(22[4-9]|23[0-9])\\."
+                                       "(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\\."
+                                       "(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\\."
+                                       "(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$"))}});
+}
+
 struct HostPort {
     std::string host;
     int port = 0;
@@ -392,11 +403,8 @@ void insert_node_resources(nmos::node_model& model, const BridgeConfig& config,
                 value_of({{nmos::fields::constraint_enum,
                            value_of({value::string(addresses.front())})}});
         }
-        if (!cfg.address.empty()) {
-            connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_ip] =
-                value_of({{nmos::fields::constraint_enum,
-                           value_of({value::string(utility::conversions::to_string_t(cfg.address))})}});
-        }
+        connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_ip] =
+            ipv4_multicast_constraint();
         connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::source_port] =
             value_of({{nmos::fields::constraint_enum, value_of({value::number(cfg.rtp_port)})}});
         connection_sender.data[nmos::fields::endpoint_constraints][0][nmos::fields::destination_port] =

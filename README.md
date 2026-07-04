@@ -80,7 +80,8 @@ Implemented:
 - Deterministic resource UUIDs derived from `namespace` + `nmos_id`
   (stable across restarts/hosts).
 - Audio (L16/L24) sender/receiver mapping, sender SDP generation, IS-05 `auto`
-  resolution to the configured multicast/interface.
+  resolution to the configured multicast/interface, and controller-selected
+  sender multicast destinations within IPv4 multicast range.
 - Ownership-safe reconciliation onto the daemon REST API, periodic + on
   activation.
 - Unit tests (Catch2) for ownership, config and reconciler; CI building against
@@ -142,9 +143,9 @@ The CI workflow intentionally keeps three separate layers:
    DNS-SD-dependent checks because the Linux Avahi Bonjour compatibility layer
    used by the Conan `nmos-cpp` build reports `DNSServiceCreateConnection` as
    unsupported in this CI environment; direct IS-04/IS-05 API checks still fail
-   the job. IS-05-02 sender destination-variation tests are also ignored because
-   each bridge sender is intentionally constrained to the configured daemon
-   multicast address.
+   the job. IS-05-02 multicast sender destination variation runs against the
+   real daemon path; unicast sender activation checks are ignored because AES67
+   daemon sources are multicast RTP sources.
 
 The generated AMWA XML may also contain AMWA-reported skips that are not bridge
 failures: IS-10 authorization checks are out of scope, optional BCP tag/capability

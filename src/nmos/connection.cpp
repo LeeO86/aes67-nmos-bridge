@@ -108,8 +108,8 @@ nmos::connection_resource_auto_resolver make_auto_resolver(const ResourceRegistr
                 return web::json::front(
                     nmos::fields::constraint_enum(constraints.at(0).at(nmos::fields::source_ip)));
             });
-            // The daemon transmits to the configured multicast group; resolve the
-            // sender destination so the generated SDP carries real RTP details.
+            // Default "auto" to the configured group while still allowing
+            // controllers to activate another multicast destination explicitly.
             if (!sender->second.address.empty()) {
                 nmos::details::resolve_auto(transport_params[0], nmos::fields::destination_ip,
                                             [&] { return value::string(us(sender->second.address)); });
